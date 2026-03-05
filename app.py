@@ -12,8 +12,17 @@ st.set_page_config(page_title="Deepfake Detector",layout="wide")
 
 st.title("🧠 Deepfake Detection System")
 
-model = load_model("model/siamese_deepfake.pth",CONFIG)
+# 1. Load the model
+model = load_model("model/siamese_deepfake.pth", CONFIG)
 
+# 2. YOU ARE MISSING THIS PART: 
+# We need to define what "Real" and "Fake" look like in vector space.
+# For now, let's create dummy tensors so the code doesn't crash, 
+# but ideally, these should be pre-calculated from your training set.
+ref_real = torch.randn(1, CONFIG["emb"]) 
+ref_fake = torch.randn(1, CONFIG["emb"]) 
+
+# 3. Sidebar UI
 mode = st.sidebar.radio("Choose Input",["Image","Video"])
 
 def process_image(image):
