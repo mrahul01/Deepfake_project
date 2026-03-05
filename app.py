@@ -59,35 +59,60 @@ if mode=="Image":
         st.write("Distance:",dist)
 
 
-elif mode=="Video":
+elif mode == "Video":
+    uploaded_video = st.file_uploader("Upload Video", type=["mp4", "avi"])
 
-    uploaded_video = st.file_uploader("Upload Video",type=["mp4","avi"])
+    # --- GALLERY INITIALIZATION ---
+    if "detection_gallery" not in st.session_state:
+        st.session_state.detection_gallery = [] # Stores (image, label, distance)
 
     if uploaded_video:
-
         tfile = tempfile.NamedTemporaryFile(delete=False)
-
         tfile.write(uploaded_video.read())
-
         cap = cv2.VideoCapture(tfile.name)
 
-        frame_window = st.image([])
+        st.subheader("Live Analysis")
+        frame_window = st.image([]) 
+        
+        # We only want to "capture" a gallery item every few frames 
+        # so we don't spam the page with 1000 images.
+        count = 0 
 
         while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret: break
+            
+            count += 1
+            # Predict every 10th frame to save speed
+            if count % 10 == 0:
+                label, dist = predict_frame(frame, model, ref_real, ref_fake, CONFIG)
+                
+                # Add to gallery state
+                # We convert to RGB and resize for the thumbnail
+                thumb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                thumb = cv2.resize(thumb, (200, 200))
+                st.session_state.detection_gallery.append((thumb, label, dist))
 
-            ret,frame = cap.read()
+                # Keep only the last 12 detections to prevent memory crash
+                if len(st.session_state.detection_gallery) > 12:
+                    st.session_state.detection_gallery.pop(0)
 
-            if not ret:
-                break
+            # Standard UI Feedback
+            color = (0, 255, 0) if label == "REAL" else (0, 0, 255)
+            cv2.putText(frame, f"{label}", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            frame_display = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_window.image(frame_display)
 
-            label,dist = predict_frame(frame,model,ref_real,ref_fake,CONFIG)
+        cap.release()
 
-            color = (0,255,0) if label=="REAL" else (0,0,255)
-
-            cv2.putText(frame,f"{label}",(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,color,2)
-
-            frame = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
-
-            frame_window.image(frame)
+        # --- THE GALLERY DISPLAY ---
+        st.divider()
+        st.subheader("📸 Detection Gallery (Recent Frames)")
+        
+        # Create a grid of 4 columns
+        cols = st.columns(4)
+        for idx, (img, lbl, d) in enumerate(reversed(st.session_state.detection_gallery)):
+            with cols[idx % 4]:
+                st.image(img, caption=f"{lbl} (Dist: {d:.2f})")
 
         cap.release()
