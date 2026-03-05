@@ -1,40 +1,45 @@
-from utils.model_utils import load_model, predict_frame
+import streamlit as st
+import cv2
+import torch
+import numpy as np
+import tempfile
+from PIL import Image
+
+from utils.model_utils import load_model
 from utils.feature_utils import extract_features_from_frame
+
+# -------------------------
+# Page config
+# -------------------------
+
 st.set_page_config(page_title="Deepfake Detector", layout="wide")
+
+st.title("🧠 Deepfake Detection System")
 st.markdown("Detect whether a face is **REAL or FAKE** using a Siamese Deepfake Model")
+
+
+# -------------------------
+# CONFIG
+# -------------------------
+
+cfg = {
+    "use_fcm": False,
+    "fcm_k": 3,
+    "hid": 128,
+    "emb": 64
+}
+
 
 # -------------------------
 # Load Model
 # -------------------------
 
 @st.cache_resource
-def load_model(model_path):
+def load_deepfake_model():
+    return load_model("model/siamese_deepfake.pth", cfg)
 
-    device = torch.device("cpu")
-    checkpoint = torch.load(model_path, map_location=device)
+model = load_deepfake_model()
 
-    feat_dim = checkpoint["feat_dim"]
-
-    model = Siamese(feat_dim)
-    model.load_state_dict(checkpoint["state_dict"])
-    model.eval()
-
-    return model
-
-
-model = load_model("model/siamese_deepfake.pth")
-
-# -------------------------
-# Sidebar Controls
-# -------------------------
-
-mode = st.sidebar.radio(
-    "Choose Input Mode",
-    ["Image", "Video", "Webcam"]
-)
-
-st.sidebar.markdown("---")
-st.sidebar.write("Created for Deepfake Detection Project")
 
 # -------------------------
 # Prediction Function
@@ -45,33 +50,49 @@ def predict_frame(frame):
     frame_small = cv2.resize(frame, (320,240))
 
     feat = extract_features_from_frame(frame_small, cfg)
+
     feat = torch.from_numpy(feat).float().unsqueeze(0)
 
     with torch.no_grad():
+
         z_img, _ = model(feat, feat)
 
-        dist_real = torch.nn.functional.pairwise_distance(z_img, ref_real)
-        dist_fake = torch.nn.functional.pairwise_distance(z_img, ref_fake)
+        distance = torch.norm(z_img).item()
 
-    if dist_real.item() < dist_fake.item():
-        return "REAL", dist_real.item()
+    # Simple threshold (can tune later)
+    if distance < 1.0:
+        return "REAL", distance
     else:
-        return "FAKE", dist_fake.item()
+        return "FAKE", distance
+
+
+# -------------------------
+# Sidebar
+# -------------------------
+
+mode = st.sidebar.radio(
+    "Choose Input Mode",
+    ["Image Detection", "Video Detection"]
+)
+
+st.sidebar.markdown("---")
+st.sidebar.info("Deepfake Detection using Siamese Network")
 
 
 # ==========================
 # IMAGE MODE
 # ==========================
 
-if mode == "Image":
+if mode == "Image Detection":
 
-    st.header("📷 Image Detection")
+    st.header("📷 Image Deepfake Detection")
 
-    uploaded = st.file_uploader("Upload Image", type=["jpg","png","jpeg"])
+    uploaded = st.file_uploader("Upload Image", type=["jpg","jpeg","png"])
 
     if uploaded:
 
         image = Image.open(uploaded)
+
         st.image(image, caption="Uploaded Image", use_column_width=True)
 
         frame = np.array(image)
@@ -83,15 +104,16 @@ if mode == "Image":
         else:
             st.error(f"Prediction: {label}")
 
-        st.write("Distance Score:", dist)
+        st.write("Distance Score:", round(dist,3))
+
 
 # ==========================
 # VIDEO MODE
 # ==========================
 
-elif mode == "Video":
+elif mode == "Video Detection":
 
-    st.header("🎬 Video Detection")
+    st.header("🎬 Video Deepfake Detection")
 
     uploaded_video = st.file_uploader("Upload Video", type=["mp4","avi","mov"])
 
@@ -107,6 +129,7 @@ elif mode == "Video":
         while cap.isOpened():
 
             ret, frame = cap.read()
+
             if not ret:
                 break
 
@@ -127,42 +150,3 @@ elif mode == "Video":
             frame_window.image(frame)
 
         cap.release()
-
-# ==========================
-# WEBCAM MODE
-# ==========================
-
-elif mode == "Webcam":
-
-    st.header("📡 Webcam Detection")
-
-    run = st.checkbox("Start Webcam")
-
-    frame_window = st.image([])
-
-    cap = cv2.VideoCapture(0)
-
-    while run:
-
-        ret, frame = cap.read()
-
-        if not ret:
-            break
-
-        label, dist = predict_frame(frame)
-
-        color = (0,255,0) if label=="REAL" else (0,0,255)
-
-        cv2.putText(frame,
-                    f"{label} {dist:.2f}",
-                    (30,50),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    color,
-                    2)
-
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        frame_window.image(frame)
-
-    cap.release()
