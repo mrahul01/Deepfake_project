@@ -1,14 +1,6 @@
-import streamlit as st
-import cv2
-import torch
-import numpy as np
-import tempfile
-import os
-from PIL import Image
-
+from utils.model_utils import load_model, predict_frame
+from utils.feature_utils import extract_features_from_frame
 st.set_page_config(page_title="Deepfake Detector", layout="wide")
-
-st.title("🧠 Deepfake Detection System")
 st.markdown("Detect whether a face is **REAL or FAKE** using a Siamese Deepfake Model")
 
 # -------------------------
